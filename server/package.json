@@ -1,0 +1,38 @@
+{
+  "name": "eventforge-server",
+  "version": "1.0.0",
+  "description": "EventForge Corporate Event & Conference Management Platform Backend API",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/seed.js",
+    "test": "node tests/fullIntegration.test.js"
+  },
+  "keywords": [
+    "eventforge",
+    "mern",
+    "express",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.1",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.2"
+  }
+}

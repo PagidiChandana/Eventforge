@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: eventforge-api
+    env: node
+    region: oregon
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false # MongoDB Atlas connection string
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        sync: false # Exact deployed Vercel origin, with no trailing slash
+      - key: JWT_EXPIRES_IN
+        value: 7d
