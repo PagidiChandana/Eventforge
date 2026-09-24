@@ -1,5 +1,6 @@
 const eventService = require('../services/eventService');
 const { checkSessionConflicts } = require('../utils/conflictEngine');
+const { Event } = require('../models/Event');
 
 // --- EVENTS ---
 const getEvents = async (req, res, next) => {
@@ -90,6 +91,20 @@ const createSession = async (req, res, next) => {
       throw err;
     }
 
+    const sessionStart = new Date(startTime);
+    const sessionEnd = new Date(endTime);
+    if (!startTime || !endTime || Number.isNaN(sessionStart.getTime()) || Number.isNaN(sessionEnd.getTime()) || sessionStart >= sessionEnd) {
+      const err = new Error('Session start and end must be valid dates, with the start before the end.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const event = await Event.findById(eventId).select('startDate endDate');
+    if (!event || sessionStart < event.startDate || sessionEnd > event.endDate) {
+      const err = new Error('Session time must fall within the event dates.');
+      err.statusCode = 400;
+      throw err;
+    }
+
     // Execute conflict engine check
     const conflictResult = await checkSessionConflicts({
       eventId,
@@ -118,13 +133,38 @@ const updateSession = async (req, res, next) => {
     const { roomName, speakers, startTime, endTime } = req.body;
     const eventId = req.params.eventId || req.body.event;
 
-    if (roomName && startTime && endTime) {
+    const currentSession = await require('../models/Session').findById(sessionId);
+    if (!currentSession) {
+      const err = new Error('Session not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (currentSession.event.toString() !== eventId.toString()) {
+      const err = new Error('Session does not belong to this event.');
+      err.statusCode = 404;
+      throw err;
+    }
+    const sessionStart = new Date(startTime || currentSession.startTime);
+    const sessionEnd = new Date(endTime || currentSession.endTime);
+    if (Number.isNaN(sessionStart.getTime()) || Number.isNaN(sessionEnd.getTime()) || sessionStart >= sessionEnd) {
+      const err = new Error('Session start and end must be valid dates, with the start before the end.');
+      err.statusCode = 400;
+      throw err;
+    }
+    const event = await Event.findById(eventId).select('startDate endDate');
+    if (!event || sessionStart < event.startDate || sessionEnd > event.endDate) {
+      const err = new Error('Session time must fall within the event dates.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (roomName || startTime || endTime || speakers) {
       const conflictResult = await checkSessionConflicts({
         eventId,
-        roomName,
-        speakers,
-        startTime,
-        endTime,
+        roomName: roomName || currentSession.roomName,
+        speakers: speakers || currentSession.speakers,
+        startTime: sessionStart,
+        endTime: sessionEnd,
         excludeSessionId: sessionId
       });
 
@@ -241,7 +281,7 @@ const deleteSponsor = async (req, res, next) => {
 // --- ANNOUNCEMENTS ---
 const getAnnouncementsByEvent = async (req, res, next) => {
   try {
-    const announcements = await eventService.getAnnouncementsByEvent(req.params.eventId);
+    const announcements = await eventService.getAnnouncementsByEvent(req.params.eventId, req.user);
     res.status(200).json({ success: true, count: announcements.length, data: announcements });
   } catch (err) { next(err); }
 };

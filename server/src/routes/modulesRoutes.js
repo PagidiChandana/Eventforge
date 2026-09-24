@@ -100,14 +100,14 @@ router.put(
 router.get(
   '/sponsors/:sponsorId/assets',
   requireAuth,
-  requireRole(...PERMS.SPONSOR_SELF),
+  requireRole(...PERMS.SPONSOR_ONLY),
   modulesController.getBrandAssetsBySponsor
 );
 
 router.post(
   '/sponsors/assets',
   requireAuth,
-  requireRole(...PERMS.SPONSOR_SELF),
+  requireRole(...PERMS.SPONSOR_ONLY),
   modulesController.uploadBrandAsset
 );
 

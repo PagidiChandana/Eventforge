@@ -3,14 +3,14 @@ const router = express.Router();
 const operationsController = require('../controllers/operationsController');
 const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 const { authorizeEventAccess } = require('../middleware/eventAuthMiddleware');
-const { authorizeStaffOrOrganizer, authorizeStaffOrOrganizerOrSpeaker } = require('../middleware/staffAuthMiddleware');
+const { authorizeStaffOrOrganizer, authorizeCheckInStaff, authorizeStaffOrOrganizerOrSpeaker } = require('../middleware/staffAuthMiddleware');
 const { PERMS } = require('../middleware/permissions');
 
 // --- STAFF SHIFTS: own tasks only (matrix: Staff Management = Organizer manage, Staff own tasks) ---
 router.get('/my-shifts', requireAuth, requireRole(...PERMS.STAFF_SELF), operationsController.getMyStaffShifts);
 
 // --- QR CHECK-IN: perform = Staff only (matrix: Organizer View via operations-overview, Attendee Own QR via tickets) ---
-router.post('/check-in', requireAuth, requireRole(...PERMS.CHECKIN_PERFORM), authorizeStaffOrOrganizer, operationsController.processQRCheckIn);
+router.post('/check-in', requireAuth, requireRole(...PERMS.CHECKIN_PERFORM), authorizeCheckInStaff, operationsController.processQRCheckIn);
 
 // --- SESSION ATTENDANCE: mark = Staff only; stats = Staff/Organizer/Admin/Speaker view ---
 router.post('/events/:eventId/session-attendance', requireAuth, requireRole(...PERMS.ATTENDANCE_MARK), authorizeStaffOrOrganizer, operationsController.markSessionAttendance);
@@ -20,6 +20,13 @@ router.get('/events/:eventId/sessions/:sessionId/attendance', requireAuth, autho
 router.get('/events/:eventId/support/search', requireAuth, authorizeStaffOrOrganizer, operationsController.searchAttendeeForSupport);
 
 // --- ORGANIZER OPERATIONS DASHBOARD & STAFF MANAGEMENT ---
+router.get(
+  '/staff-directory',
+  requireAuth,
+  requireRole(...PERMS.STAFF_MANAGE),
+  operationsController.getStaffDirectory
+);
+
 router.get(
   '/events/:eventId/operations-overview',
   requireAuth,

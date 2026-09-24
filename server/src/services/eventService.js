@@ -6,7 +6,8 @@ const Sponsor = require('../models/Sponsor');
 const SponsorshipPackage = require('../models/SponsorshipPackage');
 const Announcement = require('../models/Announcement');
 const Organization = require('../models/Organization');
-const { ROLES } = require('../models/User');
+const { User, ROLES } = require('../models/User');
+const { StaffAssignment } = require('../models/StaffAssignment');
 
 class EventService {
   // --- EVENTS ---
@@ -43,27 +44,47 @@ class EventService {
   }
 
   async createEvent(eventData, userId) {
+    const { checkInStaffEmail, ...eventFields } = eventData;
     if (new Date(eventData.startDate) >= new Date(eventData.endDate)) {
       const err = new Error('Event start date must be before end date.');
       err.statusCode = 400;
       throw err;
     }
 
+    const staffEmail = String(checkInStaffEmail || '').trim().toLowerCase();
+    const checkInStaff = await User.findOne({ email: staffEmail, role: ROLES.EVENT_STAFF, isActive: true }).select('_id');
+    if (!checkInStaff) {
+      const err = new Error('Assign an active Event Staff account to check in attendees for this event.');
+      err.statusCode = 400;
+      throw err;
+    }
+
     const event = await Event.create({
-      ...eventData,
+      ...eventFields,
       organizer: userId
     });
 
-    // Auto-create a default General Admission ticket category
-    const TicketCategory = require('../models/TicketCategory');
-    await TicketCategory.create({
-      event: event._id,
-      name: 'General Admission',
-      description: 'Standard access to all main sessions and exhibits.',
-      price: 0,
-      capacity: event.capacity || 100,
-      isActive: true
-    });
+    try {
+      // Every newly created event has a dedicated check-in assignment.
+      await StaffAssignment.create({ event: event._id, staffUser: checkInStaff._id, role: 'Check-in Staff' });
+
+      // Auto-create a default General Admission ticket category.
+      const TicketCategory = require('../models/TicketCategory');
+      await TicketCategory.create({
+        event: event._id,
+        name: 'General Admission',
+        description: 'Standard access to all main sessions and exhibits.',
+        price: 0,
+        capacity: event.capacity || 100,
+        isActive: true
+      });
+    } catch (err) {
+      await StaffAssignment.deleteMany({ event: event._id });
+      const TicketCategory = require('../models/TicketCategory');
+      await TicketCategory.deleteMany({ event: event._id });
+      await Event.findByIdAndDelete(event._id);
+      throw err;
+    }
 
     return event;
   }
@@ -187,7 +208,29 @@ class EventService {
   }
 
   async createSponsor(sponsorData) {
-    const sponsor = await Sponsor.create(sponsorData);
+    const email = String(sponsorData.contactEmail || '').trim().toLowerCase();
+    const sponsorUser = await User.findOne({ email, role: ROLES.SPONSOR, isActive: true }).select('_id');
+    if (!sponsorUser) {
+      const err = new Error('Select an active Sponsor account using its registered email.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (sponsorData.assignedPackage) {
+      const SponsorshipPackage = require('../models/SponsorshipPackage');
+      const validPackage = await SponsorshipPackage.exists({ _id: sponsorData.assignedPackage, event: sponsorData.event });
+      if (!validPackage) {
+        const err = new Error('Choose a sponsorship package belonging to this event.');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+    const alreadyAssigned = await Sponsor.exists({ event: sponsorData.event, user: sponsorUser._id });
+    if (alreadyAssigned) {
+      const err = new Error('This Sponsor account is already assigned to the event.');
+      err.statusCode = 409;
+      throw err;
+    }
+    const sponsor = await Sponsor.create({ ...sponsorData, contactEmail: email, user: sponsorUser._id });
     return await sponsor.populate('assignedPackage', 'name price');
   }
 
@@ -201,8 +244,18 @@ class EventService {
   }
 
   // --- ANNOUNCEMENTS ---
-  async getAnnouncementsByEvent(eventId) {
-    return await Announcement.find({ event: eventId })
+  async getAnnouncementsByEvent(eventId, user = null) {
+    const roleAudience = {
+      'Event Organizer': 'Organizers',
+      'Event Staff': 'Staff',
+      Speaker: 'Speakers',
+      Attendee: 'Attendees',
+      Sponsor: 'Sponsors'
+    }[user?.role];
+    const audienceFilter = roleAudience
+      ? { $in: ['All', 'ALL', roleAudience, roleAudience.toUpperCase()] }
+      : { $in: ['All', 'ALL'] };
+    return await Announcement.find({ event: eventId, targetAudience: audienceFilter })
       .populate('createdBy', 'name email')
       .sort({ publishedAt: -1 });
   }
@@ -221,13 +274,28 @@ class EventService {
     return await Organization.find().populate('owner', 'name email');
   }
 
-  async createOrganization(orgData, userId) {
-    return await Organization.create({ ...orgData, owner: userId });
+  async createOrganization(orgData) {
+    const organizer = await User.findOne({ _id: orgData.owner, role: ROLES.EVENT_ORGANIZER, isActive: true });
+    if (!organizer) {
+      const err = new Error('Choose an active event organizer to manage this organization.');
+      err.statusCode = 400;
+      throw err;
+    }
+    return await Organization.create({ ...orgData, owner: organizer._id });
   }
 
   async updateOrganization(orgId, updateData) {
-    const allowed = (({ name, description, website, logo }) => ({ name, description, website, logo }))(updateData);
+    const allowed = (({ name, description, website, logo, owner }) => ({ name, description, website, logo, owner }))(updateData);
     Object.keys(allowed).forEach((k) => allowed[k] === undefined && delete allowed[k]);
+    if (allowed.owner) {
+      const organizer = await User.findOne({ _id: allowed.owner, role: ROLES.EVENT_ORGANIZER, isActive: true });
+      if (!organizer) {
+        const err = new Error('Choose an active event organizer to manage this organization.');
+        err.statusCode = 400;
+        throw err;
+      }
+      allowed.owner = organizer._id;
+    }
     return await Organization.findByIdAndUpdate(orgId, allowed, { new: true, runValidators: true });
   }
 

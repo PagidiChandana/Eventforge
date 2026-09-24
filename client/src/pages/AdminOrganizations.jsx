@@ -4,6 +4,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import Modal from '../components/Modal';
 import { Building2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { listUsers } from '../services/userService';
+import { ROLES } from '../constants/roles';
 
 const inputStyle = {
   width: '100%', padding: '10px 12px', backgroundColor: 'rgba(15,23,42,0.6)',
@@ -11,7 +13,7 @@ const inputStyle = {
   color: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box'
 };
 
-const emptyForm = { name: '', description: '', website: '', logo: '' };
+const emptyForm = { name: '', description: '', website: '', logo: '', owner: '' };
 
 export default function AdminOrganizations() {
   const [orgs, setOrgs] = useState([]);
@@ -22,13 +24,15 @@ export default function AdminOrganizations() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [organizers, setOrganizers] = useState([]);
 
   const fetchOrgs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getOrganizations();
+      const [res, usersRes] = await Promise.all([getOrganizations(), listUsers({ role: ROLES.EVENT_ORGANIZER, limit: 100 })]);
       setOrgs(res.data || []);
+      setOrganizers((usersRes.data?.users || []).filter((user) => user.isActive));
     } catch (err) {
       setError(err.message || 'Failed to load organizations');
     } finally {
@@ -46,7 +50,7 @@ export default function AdminOrganizations() {
 
   const openEdit = (org) => {
     setEditing(org);
-    setForm({ name: org.name || '', description: org.description || '', website: org.website || '', logo: org.logo || '' });
+    setForm({ name: org.name || '', description: org.description || '', website: org.website || '', logo: org.logo || '', owner: org.owner?._id || '' });
     setModalOpen(true);
   };
 
@@ -143,6 +147,13 @@ export default function AdminOrganizations() {
           <div>
             <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Name *</label>
             <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...inputStyle, marginTop: '6px' }} placeholder="Acme Conferences" />
+          </div>
+          <div>
+            <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Assigned Organizer *</label>
+            <select required value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} style={{ ...inputStyle, marginTop: '6px' }}>
+              <option value="">Select an active organizer</option>
+              {organizers.map((organizer) => <option key={organizer._id} value={organizer._id}>{organizer.name} ({organizer.email})</option>)}
+            </select>
           </div>
           <div>
             <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Description</label>

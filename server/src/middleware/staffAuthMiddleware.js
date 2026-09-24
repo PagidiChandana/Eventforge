@@ -5,7 +5,7 @@ const { Registration } = require('../models/Registration');
 const mongoose = require('mongoose');
 const { ROLES } = require('../models/User');
 
-const authorizeStaffOrOrganizer = async (req, res, next) => {
+const authorizeStaffOrOrganizer = async (req, res, next, { checkInOnly = false } = {}) => {
   try {
     const { eventId } = req.params;
     let targetEventId = eventId || req.body.event || req.body.eventId;
@@ -55,11 +55,13 @@ const authorizeStaffOrOrganizer = async (req, res, next) => {
     }
 
     // 3. Event Staff assigned to this event has access
-    const assignment = await StaffAssignment.findOne({
+    const assignmentQuery = {
       event: targetEventId,
       staffUser: req.user.id,
-      status: { $ne: 'Off Duty' }
-    });
+      status: 'Active'
+    };
+    if (checkInOnly) assignmentQuery.role = 'Check-in Staff';
+    const assignment = await StaffAssignment.findOne(assignmentQuery);
 
     if (assignment) {
       req.staffAssignment = assignment;
@@ -75,6 +77,8 @@ const authorizeStaffOrOrganizer = async (req, res, next) => {
   }
 };
 
+const authorizeCheckInStaff = (req, res, next) => authorizeStaffOrOrganizer(req, res, next, { checkInOnly: true });
+
 // Matrix (Session Attendance row): Admin View, Organizer View, Staff ✅, Speaker View.
 // Read-only stats endpoint additionally admits speakers (view own session numbers).
 const authorizeStaffOrOrganizerOrSpeaker = async (req, res, next) => {
@@ -86,4 +90,4 @@ const authorizeStaffOrOrganizerOrSpeaker = async (req, res, next) => {
   }
 };
 
-module.exports = { authorizeStaffOrOrganizer, authorizeStaffOrOrganizerOrSpeaker };
+module.exports = { authorizeStaffOrOrganizer, authorizeCheckInStaff, authorizeStaffOrOrganizerOrSpeaker };

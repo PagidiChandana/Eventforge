@@ -8,6 +8,10 @@ const { Event } = require('../models/Event');
 const { User } = require('../models/User');
 
 class OperationsService {
+  async getStaffDirectory() {
+    return await User.find({ role: 'Event Staff', isActive: true }).select('name email').sort({ name: 1 }).lean();
+  }
+
   // --- QR CHECK-IN ---
   async processQRCheckIn({ qrToken, ticketId, ticketCode, attendeeId, staffUserId, targetEventId }) {
     const searchCode = qrToken || ticketCode;
@@ -226,8 +230,15 @@ class OperationsService {
       .populate('assignedVenue', 'name city');
   }
 
-  async assignStaff(assignmentData) {
-    return await StaffAssignment.create(assignmentData);
+  async assignStaff({ staffEmail, ...assignmentData }) {
+    const normalizedEmail = String(staffEmail || '').trim().toLowerCase();
+    const staffUser = await User.findOne({ email: normalizedEmail, role: 'Event Staff', isActive: true }).select('_id');
+    if (!staffUser) {
+      const err = new Error('Choose an active Event Staff account using its registered email.');
+      err.statusCode = 400;
+      throw err;
+    }
+    return await StaffAssignment.create({ ...assignmentData, staffUser: staffUser._id });
   }
 
   async updateStaffAssignment(id, updateData) {

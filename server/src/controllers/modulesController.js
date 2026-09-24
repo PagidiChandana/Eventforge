@@ -71,28 +71,28 @@ const updateSponsorProfile = async (req, res, next) => {
 
 const getDeliverablesBySponsor = async (req, res, next) => {
   try {
-    const deliverables = await modulesService.getDeliverablesBySponsor(req.params.sponsorId);
+    const deliverables = await modulesService.getDeliverablesBySponsor(req.params.sponsorId, req.user.id);
     res.status(200).json({ success: true, count: deliverables.length, data: deliverables });
   } catch (err) { next(err); }
 };
 
 const getDeliverablesByEvent = async (req, res, next) => {
   try {
-    const deliverables = await modulesService.getDeliverablesByEvent(req.params.eventId);
+    const deliverables = await modulesService.getDeliverablesByEvent(req.params.eventId, req.user.id);
     res.status(200).json({ success: true, count: deliverables.length, data: deliverables });
   } catch (err) { next(err); }
 };
 
 const createDeliverable = async (req, res, next) => {
   try {
-    const deliverable = await modulesService.createDeliverable(req.body);
+    const deliverable = await modulesService.createDeliverable(req.body, req.user.id);
     res.status(201).json({ success: true, message: 'Deliverable created', data: deliverable });
   } catch (err) { next(err); }
 };
 
 const updateDeliverableStatus = async (req, res, next) => {
   try {
-    const deliverable = await modulesService.updateDeliverableStatus(req.params.id, req.body);
+    const deliverable = await modulesService.updateDeliverableStatus(req.params.id, req.body, req.user, req.params.eventId || null);
     res.status(200).json({ success: true, message: 'Deliverable status updated', data: deliverable });
   } catch (err) { next(err); }
 };
@@ -106,7 +106,7 @@ const uploadBrandAsset = async (req, res, next) => {
 
 const getBrandAssetsBySponsor = async (req, res, next) => {
   try {
-    const assets = await modulesService.getBrandAssetsBySponsor(req.params.sponsorId);
+    const assets = await modulesService.getBrandAssetsBySponsor(req.params.sponsorId, req.user.id);
     res.status(200).json({ success: true, count: assets.length, data: assets });
   } catch (err) { next(err); }
 };

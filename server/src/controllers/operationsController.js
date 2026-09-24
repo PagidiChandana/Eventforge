@@ -39,6 +39,13 @@ const getSessionAttendanceStats = async (req, res, next) => {
 };
 
 // --- STAFF ASSIGNMENTS ---
+const getStaffDirectory = async (req, res, next) => {
+  try {
+    const staff = await operationsService.getStaffDirectory();
+    res.status(200).json({ success: true, count: staff.length, data: staff });
+  } catch (err) { next(err); }
+};
+
 const getStaffAssignments = async (req, res, next) => {
   try {
     const assignments = await operationsService.getStaffAssignments(req.params.eventId);
@@ -93,7 +100,7 @@ const searchAttendeeForSupport = async (req, res, next) => {
 module.exports = {
   processQRCheckIn,
   markSessionAttendance, getSessionAttendanceStats,
-  getStaffAssignments, assignStaff, updateStaffAssignment, deleteStaffAssignment,
+  getStaffDirectory, getStaffAssignments, assignStaff, updateStaffAssignment, deleteStaffAssignment,
   getMyStaffShifts, getEventOperationsOverview,
   searchAttendeeForSupport
 };

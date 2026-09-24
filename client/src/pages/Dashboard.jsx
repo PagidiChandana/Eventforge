@@ -373,6 +373,29 @@ const Dashboard = () => {
 
 
       {/* 4. MAIN WORKSPACE CONTENT GRID */}
+      {isAdmin && organizerStats && (
+        <div className="glass-panel" style={{ padding: '22px 24px' }}>
+          <h2 style={{ color: '#fff', fontSize: '18px', fontWeight: 750, marginBottom: '14px' }}>Platform event and ticket status</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+            {[
+              ['Unique attendees', organizerStats.attendeeCount],
+              ['Pending registrations', organizerStats.registrationStatuses?.Pending],
+              ['Approved registrations', organizerStats.registrationStatuses?.Approved],
+              ['Waitlisted registrations', organizerStats.registrationStatuses?.Waitlisted],
+              ['Valid tickets', organizerStats.ticketStatuses?.Valid],
+              ['Used tickets', organizerStats.ticketStatuses?.Used],
+              ['Cancelled tickets', organizerStats.ticketStatuses?.Cancelled],
+            ].map(([label, value]) => (
+              <div key={label} style={{ padding: '14px', borderRadius: '10px', background: 'rgba(15,23,42,0.6)' }}>
+                <div style={{ color: '#94a3b8', fontSize: '12px' }}>{label}</div>
+                <div style={{ color: '#fff', fontSize: '22px', fontWeight: 800, marginTop: '5px' }}>{value ?? 0}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ color: '#64748b', fontSize: '12px', marginTop: '12px' }}>Overview across all platform events. Organizers manage their event schedules, check-in assignments, and announcements.</p>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
         {/* Left Column: Upcoming Events */}
         <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyBetween: 'space-between' }}>

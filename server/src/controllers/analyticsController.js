@@ -27,7 +27,17 @@ async function getOrganizerOverview(req, res, next) {
   }
 }
 
+async function getMyAnalytics(req, res, next) {
+  try {
+    const summary = await analyticsService.getMyAnalytics(req.user);
+    res.status(200).json({ success: true, data: summary });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getEventAnalytics,
-  getOrganizerOverview
+  getOrganizerOverview,
+  getMyAnalytics
 };

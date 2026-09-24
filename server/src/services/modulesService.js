@@ -1,5 +1,6 @@
 const Speaker = require('../models/Speaker');
 const Session = require('../models/Session');
+const { Event } = require('../models/Event');
 const PresentationMaterial = require('../models/PresentationMaterial');
 const Sponsor = require('../models/Sponsor');
 const { Deliverable } = require('../models/Deliverable');
@@ -217,8 +218,7 @@ class ModulesService {
 
     // Strict separation: ONLY the owning sponsor edits their sponsor profile.
     const userId = typeof user === 'object' ? user.id || user._id : user;
-    const userEmail = typeof user === 'object' ? user.email : null;
-    const isOwner = (sponsor.user && sponsor.user.toString() === userId.toString()) || (userEmail && sponsor.contactEmail === userEmail);
+    const isOwner = sponsor.user && sponsor.user.toString() === userId.toString();
 
     if (!isOwner) {
       const err = new Error('Access Denied: You can only edit your own sponsor profile.');
@@ -226,36 +226,106 @@ class ModulesService {
       throw err;
     }
 
-    return await Sponsor.findByIdAndUpdate(sponsorId, updateData, { new: true, runValidators: true });
+    const allowed = (({ companyName, contactName, contactEmail, description, logoUrl, website }) => ({ companyName, contactName, contactEmail, description, logoUrl, website }))(updateData);
+    return await Sponsor.findByIdAndUpdate(sponsorId, allowed, { new: true, runValidators: true });
   }
 
-  async getDeliverablesBySponsor(sponsorId) {
+  async getDeliverablesBySponsor(sponsorId, userId) {
+    const sponsor = await Sponsor.findOne({ _id: sponsorId, user: userId }).select('_id');
+    if (!sponsor) {
+      const err = new Error('You can only view deliverables assigned to your sponsor profile.');
+      err.statusCode = 403;
+      throw err;
+    }
     return await Deliverable.find({ sponsor: sponsorId })
       .populate('event', 'name startDate endDate')
       .populate('package', 'name price')
       .sort({ dueDate: 1 });
   }
 
-  async getDeliverablesByEvent(eventId) {
+  async getDeliverablesByEvent(eventId, organizerId) {
+    const event = await Event.findOne({ _id: eventId, organizer: organizerId }).select('_id');
+    if (!event) {
+      const err = new Error('You can only manage deliverables for your own events.');
+      err.statusCode = 403;
+      throw err;
+    }
     return await Deliverable.find({ event: eventId })
       .populate('sponsor', 'companyName contactEmail logoUrl website')
       .populate('package', 'name price')
       .sort({ dueDate: 1 });
   }
 
-  async createDeliverable(deliverableData) {
+  async createDeliverable(deliverableData, organizerId) {
+    const event = await Event.findOne({ _id: deliverableData.event, organizer: organizerId }).select('_id');
+    const sponsor = await Sponsor.findOne({ _id: deliverableData.sponsor, event: deliverableData.event }).select('_id');
+    if (!event || !sponsor) {
+      const err = new Error('Choose a sponsor assigned to your event.');
+      err.statusCode = 403;
+      throw err;
+    }
     return await Deliverable.create(deliverableData);
   }
 
-  async updateDeliverableStatus(deliverableId, updateData) {
-    return await Deliverable.findByIdAndUpdate(deliverableId, updateData, { new: true, runValidators: true });
+  async updateDeliverableStatus(deliverableId, updateData, user, eventId = null) {
+    const deliverable = await Deliverable.findById(deliverableId).populate('sponsor', 'user event');
+    if (!deliverable) {
+      const err = new Error('Deliverable not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    let allowed;
+    if (user.role === ROLES.SPONSOR) {
+      if (deliverable.sponsor?.user?.toString() !== user.id.toString()) {
+        const err = new Error('You can only submit deliverables assigned to your sponsor account.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!['In Progress', 'Submitted'].includes(updateData.status)) {
+        const err = new Error('Sponsors can mark assigned deliverables In Progress or Submitted.');
+        err.statusCode = 403;
+        throw err;
+      }
+      allowed = (({ status, notes, assetUrl }) => ({ status, notes, assetUrl }))(updateData);
+    } else {
+      const event = await Event.findOne({ _id: deliverable.event, organizer: user.id }).select('_id');
+      if (!event || (eventId && event._id.toString() !== eventId.toString())) {
+        const err = new Error('You can only review deliverables for your own events.');
+        err.statusCode = 403;
+        throw err;
+      }
+      if (!['Approved', 'Rejected'].includes(updateData.status)) {
+        const err = new Error('Organizers can approve or reject submitted deliverables.');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (deliverable.status !== 'Submitted') {
+        const err = new Error('Review is available after the sponsor submits the deliverable.');
+        err.statusCode = 400;
+        throw err;
+      }
+      allowed = { status: updateData.status };
+    }
+    return await Deliverable.findByIdAndUpdate(deliverableId, allowed, { new: true, runValidators: true });
   }
 
   async uploadBrandAsset(assetData, userId) {
+    const sponsor = await Sponsor.findOne({ _id: assetData.sponsor, user: userId }).select('_id');
+    if (!sponsor) {
+      const err = new Error('You can only add brand assets to your sponsor profile.');
+      err.statusCode = 403;
+      throw err;
+    }
     return await BrandAsset.create({ ...assetData, uploadedBy: userId });
   }
 
-  async getBrandAssetsBySponsor(sponsorId) {
+  async getBrandAssetsBySponsor(sponsorId, userId) {
+    const sponsor = await Sponsor.findOne({ _id: sponsorId, user: userId }).select('_id');
+    if (!sponsor) {
+      const err = new Error('You can only view assets for your sponsor profile.');
+      err.statusCode = 403;
+      throw err;
+    }
     return await BrandAsset.find({ sponsor: sponsorId }).sort({ createdAt: -1 });
   }
 

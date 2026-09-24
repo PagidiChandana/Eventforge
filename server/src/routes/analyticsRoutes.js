@@ -10,6 +10,8 @@ const { PERMS } = require('../middleware/permissions');
 
 router.use(requireAuth);
 
+router.get('/me', analyticsController.getMyAnalytics);
+
 // Matrix Analytics row: Platform (Admin) + Event (Organizer).
 // Other roles are served by scoped endpoints (my-shifts, speaker sessions,
 // my-tickets/registrations, sponsor deliverables, session attendance stats).

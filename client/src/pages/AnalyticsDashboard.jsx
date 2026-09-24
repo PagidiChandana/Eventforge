@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getOrganizerOverview, getEventAnalytics } from '../services/analyticsService';
+import { getMyAnalytics, getEventAnalytics } from '../services/analyticsService';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
@@ -57,14 +57,14 @@ export default function AnalyticsDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getOrganizerOverview();
+      const res = await getMyAnalytics();
       const data = res?.data || null;
       setOverview(data);
       const list = data?.eventsSummary || [];
       if (list.length > 0) {
         const firstId = list[0]._id;
-        setSelectedEventId((prev) => prev || firstId);
-        fetchEventStats(list[0]._id);
+        setSelectedEventId(firstId);
+        fetchEventStats(firstId);
       }
     } catch (err) {
       setError(err.message || 'Failed to load analytics overview');
@@ -104,6 +104,7 @@ export default function AnalyticsDashboard() {
   const att = evStats.attendance || {};
   const fb = evStats.feedback || {};
   const sp = evStats.sponsors || {};
+  const tickets = evStats.tickets || {};
   const sessInfo = evStats.sessions || {};
 
   const regTotal = num(regs.total);
@@ -162,9 +163,52 @@ export default function AnalyticsDashboard() {
       {overview && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
           <MetricCard label="Total Events" value={num(overview.totalEvents)} sub={`${num(overview.upcomingEvents)} Upcoming`} subColor="#818cf8" valueColor="#fff" icon={<Calendar style={{ width: '22px', height: '22px' }} />} />
+          <MetricCard label="Organizations" value={num(overview.organizationCount)} sub="Represented by these events" valueColor="#a5b4fc" icon={<Briefcase style={{ width: '22px', height: '22px' }} />} />
           <MetricCard label="Active Registrations" value={num(overview.activeRegistrations)} sub="Approved delegates" valueColor="#34d399" icon={<Users style={{ width: '22px', height: '22px' }} />} />
           <MetricCard label="Checked-In" value={num(overview.totalCheckedIn)} sub="Scanned QR tickets" valueColor="#38bdf8" icon={<CheckCircle style={{ width: '22px', height: '22px' }} />} />
           <MetricCard label="Pending Tasks" value={num(overview.pendingTasks)} sub="Regs & deliverables" valueColor="#fbbf24" icon={<TrendingUp style={{ width: '22px', height: '22px' }} />} />
+          <MetricCard label="Unique Attendees" value={num(overview.attendeeCount)} sub="Across your events" valueColor="#38bdf8" icon={<Users style={{ width: '22px', height: '22px' }} />} />
+          <MetricCard label="Speakers" value={num(overview.speakerCount)} sub="Scheduled across events" valueColor="#c084fc" icon={<Award style={{ width: '22px', height: '22px' }} />} />
+          <MetricCard label="Sponsors" value={num(overview.sponsorCount)} sub={`${num(overview.packageCount)} packages`} valueColor="#f472b6" icon={<Briefcase style={{ width: '22px', height: '22px' }} />} />
+          <MetricCard label="Staff Assignments" value={num(overview.staffAssignments)} sub={`${num(overview.sessionAttendanceCount)} session check-ins`} valueColor="#06b6d4" icon={<CheckCircle style={{ width: '22px', height: '22px' }} />} />
+        </div>
+      )}
+
+      {overview && (
+        <div className="glass-panel" style={{ padding: '18px 22px' }}>
+          <h2 style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginBottom: '12px' }}>{isAdmin ? 'Platform status breakdown' : 'Your event status breakdown'}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+            {[
+              ['Events', overview.eventStatuses],
+              ['Registrations', overview.registrationStatuses],
+              ['Tickets', overview.ticketStatuses],
+              ['Sponsor deliverables', overview.deliverableStatuses]
+            ].map(([group, statuses]) => (
+              <div key={group}>
+                <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '7px' }}>{group}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {Object.entries(statuses || {}).map(([status, count]) => <span key={status} style={{ color: '#cbd5e1', background: 'rgba(15,23,42,.7)', padding: '5px 8px', borderRadius: '7px', fontSize: '11px' }}>{status}: {count}</span>)}
+                  {!Object.keys(statuses || {}).length && <span style={{ color: '#64748b', fontSize: '12px' }}>No records</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {events.length > 0 && (
+        <div className="glass-panel" style={{ padding: '18px 22px' }}>
+          <h2 style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginBottom: '12px' }}>Events overview</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {events.map((ev) => (
+              <button key={ev._id} type="button" onClick={() => { setSelectedEventId(ev._id); fetchEventStats(ev._id); }} style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 2fr) repeat(3, minmax(90px, 1fr))', gap: '10px', alignItems: 'center', textAlign: 'left', padding: '11px 12px', border: '1px solid rgba(255,255,255,.07)', borderRadius: '9px', background: selectedEventId === ev._id ? 'rgba(99,102,241,.15)' : 'rgba(15,23,42,.55)', color: '#cbd5e1', cursor: 'pointer', fontSize: '12px' }}>
+                <strong style={{ color: '#fff' }}>{ev.name}</strong>
+                <span>{ev.status}</span>
+                <span>{ev.startDate ? new Date(ev.startDate).toLocaleDateString() : 'Date TBD'}</span>
+                <span>{isAdmin ? (ev.organizer?.name || 'Unassigned') : `Capacity ${num(ev.capacity)}`}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -194,6 +238,7 @@ export default function AnalyticsDashboard() {
                   { label: 'Pending approval', value: num(regs.pending), color: '#fbbf24' },
                   { label: 'Waitlisted', value: num(regs.waitlisted), color: '#a78bfa' },
                   { label: 'Cancelled', value: num(regs.cancelled), color: '#fb7185' },
+                  { label: 'Rejected', value: num(regs.rejected), color: '#f87171' },
                 ].map((row) => (
                   <div key={row.label} style={{ marginBottom: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#cbd5e1', marginBottom: '5px' }}>
@@ -298,6 +343,25 @@ export default function AnalyticsDashboard() {
                     <p style={{ color: '#94a3b8', fontSize: '10px', textTransform: 'uppercase' }}>Packages</p>
                     <p style={{ fontWeight: 800, color: '#a5b4fc', fontSize: '18px', marginTop: '4px' }}>{num(sp.packagesCount)}</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="glass-card" style={{ padding: '20px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', marginBottom: '14px' }}>Event participation</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {[
+                    ['Unique attendees', evStats.attendees?.unique],
+                    ['Speakers', evStats.speakers?.count],
+                    ['Staff assignments', evStats.staff?.assignments],
+                    ['Valid tickets', tickets.Valid],
+                    ['Used tickets', tickets.Used],
+                    ['Cancelled tickets', tickets.Cancelled],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ padding: '12px', background: 'rgba(15,23,42,.6)', borderRadius: '9px' }}>
+                      <div style={{ color: '#94a3b8', fontSize: '11px' }}>{label}</div>
+                      <div style={{ color: '#fff', fontWeight: 800, fontSize: '19px', marginTop: '3px' }}>{num(value)}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

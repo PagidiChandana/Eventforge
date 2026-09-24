@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getSponsorProfile, getDeliverablesBySponsor } from '../services/modulesService';
+import { getMyAnalytics } from '../services/analyticsService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import { BarChart3 } from 'lucide-react';
@@ -10,13 +11,15 @@ export default function SponsorAnalytics() {
   const [error, setError] = useState(null);
   const [profile, setProfile] = useState(null);
   const [deliverables, setDeliverables] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const pRes = await getSponsorProfile();
+        const [pRes, analyticsRes] = await Promise.all([getSponsorProfile(), getMyAnalytics()]);
         const prof = pRes.data;
         setProfile(prof);
+        setAnalytics(analyticsRes.data || null);
         if (prof) {
           const dRes = await getDeliverablesBySponsor(prof._id).catch(() => null);
           setDeliverables(dRes?.data || []);
@@ -32,10 +35,10 @@ export default function SponsorAnalytics() {
 
   if (loading) return <LoadingSpinner message="Loading sponsor analytics..." />;
 
-  const total = deliverables.length;
-  const done = deliverables.filter((d) => ['Approved', 'Completed', 'Submitted'].includes(d.status)).length;
+  const total = analytics?.deliverableCount || 0;
+  const statuses = analytics?.deliverables || {};
+  const done = (statuses.Approved || 0) + (statuses.Completed || 0);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const pkgs = [...new Map((deliverables || []).map((d) => d.package).filter(Boolean).map((p) => [p._id?.toString?.(), p])).values()];
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -53,8 +56,8 @@ export default function SponsorAnalytics() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
         <div className="glass-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Packages</div>
-          <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff', marginTop: '4px' }}>{pkgs.length}</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{pkgs.map((p) => p.name).join(', ') || 'None assigned'}</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#fff', marginTop: '4px' }}>{analytics?.packageCount || 0}</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{(analytics?.events || []).map((event) => event.package?.name).filter(Boolean).join(', ') || 'None assigned'}</div>
         </div>
         <div className="glass-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Deliverables Done</div>
@@ -64,7 +67,7 @@ export default function SponsorAnalytics() {
         <div className="glass-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Package Value</div>
           <div style={{ fontSize: '28px', fontWeight: 800, color: '#f472b6', marginTop: '4px' }}>
-            ${pkgs.reduce((n, p) => n + (p.price || 0), 0).toLocaleString()}
+            ${(analytics?.packageValue || 0).toLocaleString()}
           </div>
           <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>Total sponsorship value</div>
         </div>
@@ -72,6 +75,9 @@ export default function SponsorAnalytics() {
 
       <div className="glass-panel" style={{ padding: '22px' }}>
         <h2 style={{ fontSize: '16px', fontWeight: 800, color: '#fff', marginBottom: '12px' }}>Deliverable Breakdown</h2>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {['Pending', 'In Progress', 'Submitted', 'Approved', 'Rejected'].map((status) => <span key={status} style={{ color: '#cbd5e1', background: 'rgba(15,23,42,.7)', padding: '6px 10px', borderRadius: '8px', fontSize: '12px' }}>{status}: {statuses[status] || 0}</span>)}
+        </div>
         {deliverables.length === 0 ? (
           <p style={{ fontSize: '13px', color: '#94a3b8' }}>No deliverables tracked yet.</p>
         ) : (
@@ -84,6 +90,11 @@ export default function SponsorAnalytics() {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '22px' }}>
+        <h2 style={{ fontSize: '16px', fontWeight: 800, color: '#fff', marginBottom: '12px' }}>Sponsored events</h2>
+        {(analytics?.events || []).length === 0 ? <p style={{ color: '#94a3b8', fontSize: '13px' }}>No event sponsorships assigned yet.</p> : (analytics.events || []).map((event, index) => <div key={`${event._id}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '11px 0', borderBottom: '1px solid rgba(255,255,255,.06)', color: '#cbd5e1', fontSize: '13px' }}><span>{event.name || 'Event'}</span><span>{event.package?.name || 'No package'} · {event.status || ''}</span></div>)}
       </div>
     </div>
   );

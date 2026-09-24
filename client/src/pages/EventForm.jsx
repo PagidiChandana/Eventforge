@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createEvent, updateEvent, getEventById, getVenues, getOrganizations } from '../services/eventService';
+import { getStaffDirectory } from '../services/operationsService';
 import AlertError from '../components/AlertError';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Calendar, MapPin, Building, ArrowLeft, Save, Sparkles } from 'lucide-react';
@@ -37,15 +38,22 @@ const EventForm = () => {
 
   const [venues, setVenues] = useState([]);
   const [organizations, setOrganizations] = useState([]);
+  const [staffDirectory, setStaffDirectory] = useState([]);
+  const [checkInStaffEmail, setCheckInStaffEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEdit);
   const [error, setError] = useState(null);
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [vRes, oRes] = await Promise.all([getVenues(), getOrganizations()]);
+        const [vRes, oRes, staffRes] = await Promise.all([
+          getVenues(),
+          getOrganizations(),
+          isEdit ? Promise.resolve({ data: [] }) : getStaffDirectory()
+        ]);
         setVenues(vRes.data || []);
         setOrganizations(oRes.data || []);
+        setStaffDirectory(staffRes.data || []);
 
         if (isEdit) {
           const eRes = await getEventById(id);
@@ -97,8 +105,15 @@ const EventForm = () => {
     try {
       const payload = {
         ...formData,
+        ...(!isEdit ? { checkInStaffEmail } : {}),
         tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : []
       };
+
+      if (!isEdit && !checkInStaffEmail) {
+        setError('Select an Event Staff member to handle this event’s check-ins.');
+        setLoading(false);
+        return;
+      }
 
       if (!payload.venue) delete payload.venue;
       if (!payload.organization) delete payload.organization;
@@ -406,6 +421,30 @@ const EventForm = () => {
             </div>
           </div>
 
+          {!isEdit && (
+            <div style={{ padding: '18px', borderRadius: '10px', border: '1px solid rgba(6,182,212,.25)', background: 'rgba(6,182,212,.06)' }}>
+              <label htmlFor="check-in-staff" style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#cbd5e1', marginBottom: '7px' }}>
+                Event check-in staff *
+              </label>
+              <select
+                id="check-in-staff"
+                required
+                value={checkInStaffEmail}
+                onChange={(e) => setCheckInStaffEmail(e.target.value)}
+                disabled={staffDirectory.length === 0}
+                style={{ width: '100%', padding: '11px 14px', backgroundColor: '#0f172a', border: '1px solid rgba(6,182,212,.35)', borderRadius: '8px', color: '#fff', fontSize: '14px' }}
+              >
+                <option value="">Select active staff member</option>
+                {staffDirectory.map((staff) => <option key={staff._id} value={staff.email}>{staff.name} ({staff.email})</option>)}
+              </select>
+              <p style={{ color: staffDirectory.length ? '#94a3b8' : '#fbbf24', fontSize: '12px', marginTop: '7px' }}>
+                {staffDirectory.length
+                  ? 'This staff member will be assigned to this event and can verify its attendee tickets.'
+                  : 'No active Event Staff accounts are available. Ask a Platform Admin to create a staff account before creating this event.'}
+              </p>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
             <button
               type="button"
@@ -425,7 +464,7 @@ const EventForm = () => {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (!isEdit && staffDirectory.length === 0)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -437,8 +476,8 @@ const EventForm = () => {
                 color: '#fff',
                 fontSize: '14px',
                 fontWeight: 600,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1
+                cursor: loading || (!isEdit && staffDirectory.length === 0) ? 'not-allowed' : 'pointer',
+                opacity: loading || (!isEdit && staffDirectory.length === 0) ? 0.7 : 1
               }}
             >
               <Save style={{ width: '16px', height: '16px' }} />

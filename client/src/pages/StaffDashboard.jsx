@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getMyStaffShifts, getMyTasks, updateTaskStatus } from '../services/operationsService';
+import { getMyAnalytics } from '../services/analyticsService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import EmptyState from '../components/EmptyState';
@@ -9,6 +10,7 @@ import { Shield, Calendar, MapPin, Camera, Clock, UserCheck, CheckCircle2, ListT
 const StaffDashboard = () => {
   const [shifts, setShifts] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -17,12 +19,14 @@ const StaffDashboard = () => {
       setLoading(true);
       setError(null);
       try {
-        const [shiftRes, taskRes] = await Promise.all([
+        const [shiftRes, taskRes, analyticsRes] = await Promise.all([
           getMyStaffShifts(),
-          getMyTasks()
+          getMyTasks(),
+          getMyAnalytics()
         ]);
         setShifts(shiftRes.data || []);
         setTasks(taskRes || []);
+        setAnalytics(analyticsRes.data || null);
       } catch (err) {
         setError(err.message || 'Failed to load dashboard data.');
       } finally {
@@ -75,6 +79,16 @@ const StaffDashboard = () => {
       </div>
 
       {error && <AlertError message={error} onClose={() => setError(null)} />}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px' }}>
+        {[
+          ['Assigned events', analytics?.totalEvents],
+          ['Active assignments', analytics?.activeAssignments],
+          ['Attendee check-ins', analytics?.checkIns],
+          ['Session check-ins', analytics?.sessionCheckIns],
+          ['Tasks completed', analytics?.tasks?.Completed]
+        ].map(([label, value]) => <div key={label} className="glass-card" style={{ padding: '17px' }}><div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div><div style={{ color: '#fff', fontSize: '25px', fontWeight: 800, marginTop: '5px' }}>{value || 0}</div></div>)}
+      </div>
 
       {shifts.length === 0 ? (
         <EmptyState

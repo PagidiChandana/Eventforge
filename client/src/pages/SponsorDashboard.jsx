@@ -49,6 +49,7 @@ const SponsorDashboard = ({ initialTab }) => {
   const [success, setSuccess] = useState(null);
   const [activeTab, setActiveTab] = useState(initialTab || 'Deliverables');
   const [announcements, setAnnouncements] = useState([]);
+  const [submissionForms, setSubmissionForms] = useState({});
 
   // Profile form
   const [profileForm, setProfileForm] = useState({
@@ -114,9 +115,9 @@ const SponsorDashboard = ({ initialTab }) => {
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  const handleDeliverableStatus = async (id, status) => {
+  const handleDeliverableStatus = async (id, status, submission = {}) => {
     try {
-      await updateDeliverableStatus(id, { status });
+      await updateDeliverableStatus(id, { status, ...submission });
       const res = await getDeliverablesBySponsor(profile._id);
       setDeliverables(res.data || []);
       showSuccess(`Deliverable marked as "${status}".`);
@@ -285,6 +286,23 @@ const SponsorDashboard = ({ initialTab }) => {
                           {d.description && (
                             <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.5 }}>{d.description}</p>
                           )}
+                          {(d.status === 'Pending' || d.status === 'In Progress' || d.status === 'Rejected') && (
+                            <div style={{ display: 'grid', gap: '8px', marginTop: '12px' }}>
+                              <input
+                                value={submissionForms[d._id]?.assetUrl ?? d.assetUrl ?? ''}
+                                onChange={e => setSubmissionForms(current => ({ ...current, [d._id]: { ...current[d._id], assetUrl: e.target.value } }))}
+                                placeholder="Link to the completed deliverable (optional)"
+                                style={inputStyle}
+                              />
+                              <textarea
+                                value={submissionForms[d._id]?.notes ?? d.notes ?? ''}
+                                onChange={e => setSubmissionForms(current => ({ ...current, [d._id]: { ...current[d._id], notes: e.target.value } }))}
+                                placeholder="Add delivery notes for the organizer"
+                                rows={2}
+                                style={inputStyle}
+                              />
+                            </div>
+                          )}
                           {d.dueDate && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}>
                               <Clock style={{ width: '13px', height: '13px' }} />
@@ -303,7 +321,7 @@ const SponsorDashboard = ({ initialTab }) => {
                           )}
                           {(d.status === 'Pending' || d.status === 'In Progress') && (
                             <button
-                              onClick={() => handleDeliverableStatus(d._id, 'Submitted')}
+                              onClick={() => handleDeliverableStatus(d._id, 'Submitted', submissionForms[d._id] || {})}
                               style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: '#06b6d4', color: '#fff', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer' }}
                             >
                               Submit Deliverable
@@ -311,7 +329,7 @@ const SponsorDashboard = ({ initialTab }) => {
                           )}
                           {d.status === 'Rejected' && (
                             <button
-                              onClick={() => handleDeliverableStatus(d._id, 'Submitted')}
+                              onClick={() => handleDeliverableStatus(d._id, 'Submitted', submissionForms[d._id] || {})}
                               style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'rgba(239,68,68,0.15)', color: '#fca5a5', fontSize: '12px', fontWeight: 600, border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer' }}
                             >
                               Resubmit

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getMyRegistrations, getMyTickets } from '../services/registrationService';
 import { getEvents, getAnnouncementsByEvent } from '../services/eventService';
+import { getMyAnalytics } from '../services/analyticsService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import { Calendar, Ticket, Sparkles, Megaphone, ArrowRight, Clock } from 'lucide-react';
@@ -15,16 +16,19 @@ export default function AttendeeDashboard() {
   const [tickets, setTickets] = useState([]);
   const [events, setEvents] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [regRes, tickRes, evRes] = await Promise.all([
+        const [regRes, tickRes, evRes, analyticsRes] = await Promise.all([
           getMyRegistrations().catch(() => null),
           getMyTickets().catch(() => null),
-          getEvents().catch(() => null)
+          getEvents().catch(() => null),
+          getMyAnalytics().catch(() => null)
         ]);
+        setAnalytics(analyticsRes?.data || null);
         const regs = regRes?.data || [];
         setRegistrations(regs);
         setTickets(tickRes?.data || []);
@@ -78,6 +82,21 @@ export default function AttendeeDashboard() {
             {c.icon}
           </Link>
         ))}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '18px 22px' }}>
+        <h2 style={{ color: '#fff', fontSize: '15px', fontWeight: 800, marginBottom: '12px' }}>My participation</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '12px' }}>
+          {[
+            ['Approved registrations', analytics?.registrations?.Approved],
+            ['Pending registrations', analytics?.registrations?.Pending],
+            ['Valid tickets', analytics?.tickets?.Valid],
+            ['Used tickets', analytics?.tickets?.Used],
+            ['Event check-ins', analytics?.checkIns],
+            ['Session check-ins', analytics?.sessionCheckIns],
+            ['Feedback submitted', analytics?.feedback?.count]
+          ].map(([label, value]) => <div key={label} style={{ padding: '12px', background: 'rgba(15,23,42,.6)', borderRadius: '9px' }}><div style={{ color: '#94a3b8', fontSize: '11px' }}>{label}</div><div style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginTop: '4px' }}>{value || 0}</div></div>)}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>

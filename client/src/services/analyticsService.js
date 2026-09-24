@@ -5,6 +5,11 @@ export const getOrganizerOverview = async () => {
   return response.data;
 };
 
+export const getMyAnalytics = async () => {
+  const response = await api.get('/analytics/me');
+  return response.data;
+};
+
 export const getEventAnalytics = async (eventId) => {
   const response = await api.get(`/analytics/events/${eventId}`);
   return response.data;

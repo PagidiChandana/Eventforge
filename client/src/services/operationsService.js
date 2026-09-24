@@ -23,6 +23,11 @@ export const getSessionAttendanceStats = async (eventId, sessionId) => {
 };
 
 // STAFF SHIFTS & ASSIGNMENTS
+export const getStaffDirectory = async () => {
+  const response = await api.get('/operations/staff-directory');
+  return response.data;
+};
+
 export const getMyStaffShifts = async () => {
   const response = await api.get('/operations/my-shifts');
   return response.data;

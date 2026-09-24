@@ -9,6 +9,7 @@ import {
   getMaterialsBySession
 } from '../services/modulesService';
 import { getAnnouncementsByEvent } from '../services/eventService';
+import { getMyAnalytics } from '../services/analyticsService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import Modal from '../components/Modal';
@@ -44,6 +45,7 @@ const SpeakerDashboard = ({ initialTab }) => {
   const [feedback, setFeedback] = useState([]);
   const [allMaterials, setAllMaterials] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [availNote, setAvailNote] = useState('');
   const [unavailableDates, setUnavailableDates] = useState('');
   const [savingAvail, setSavingAvail] = useState(false);
@@ -68,7 +70,8 @@ const SpeakerDashboard = ({ initialTab }) => {
     setLoading(true);
     setError(null);
     try {
-      const [pRes, sRes] = await Promise.all([getSpeakerProfile(), getSpeakerSessions()]);
+      const [pRes, sRes, analyticsRes] = await Promise.all([getSpeakerProfile(), getSpeakerSessions(), getMyAnalytics()]);
+      setAnalytics(analyticsRes.data || null);
       const prof = pRes.data;
       setProfile(prof);
       if (prof) {
@@ -259,6 +262,17 @@ const SpeakerDashboard = ({ initialTab }) => {
           {success}
         </div>
       )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px' }}>
+        {[
+          ['Assigned sessions', analytics?.sessionCount],
+          ['Upcoming sessions', analytics?.upcomingSessions],
+          ['Events', analytics?.eventCount],
+          ['Session attendance', analytics?.sessionAttendance],
+          ['Feedback average', analytics?.feedback?.averageRating],
+          ['Presentation materials', analytics?.materials]
+        ].map(([label, value]) => <div key={label} className="glass-card" style={{ padding: '17px' }}><div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', fontWeight: 700 }}>{label}</div><div style={{ color: '#fff', fontSize: '25px', fontWeight: 800, marginTop: '5px' }}>{value ?? 0}</div></div>)}
+      </div>
 
       {/* Stats row */}
       {sessions.length > 0 && (

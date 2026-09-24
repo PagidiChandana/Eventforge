@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   getEventById,
   deleteEvent,
@@ -12,8 +12,8 @@ import {
 } from '../services/eventService';
 import { useAuth } from '../context/AuthContext';
 import { getMyRegistrations, getEventRegistrationsForOrganizer, updateRegistrationStatus, getTicketCategories, getCouponsByEvent, createTicketCategory, updateTicketCategory, deleteTicketCategory, createCoupon } from '../services/registrationService';
-import { getStaffAssignments, assignStaff, updateStaffAssignment, deleteStaffAssignment } from '../services/operationsService';
-import { getOrganizerSpeakers } from '../services/modulesService';
+import { getStaffAssignments, getStaffDirectory, assignStaff, updateStaffAssignment, deleteStaffAssignment } from '../services/operationsService';
+import { getOrganizerSpeakers, createDeliverable, createSpeakerForOrganizer, assignSpeakerToSession } from '../services/modulesService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertError from '../components/AlertError';
 import EmptyState from '../components/EmptyState';
@@ -28,6 +28,7 @@ import {
 
 const EventDetails = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -56,7 +57,8 @@ const EventDetails = () => {
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [ticketForm, setTicketForm] = useState({ name: '', description: '', price: 0, capacity: 100, saleStart: '', saleEnd: '' });
   const [couponForm, setCouponForm] = useState({ code: '', discountType: 'Percentage', discountValue: 0, usageLimit: 100, validFrom: '', validUntil: '' });
-  const [staffForm, setStaffForm] = useState({ userEmail: '', role: 'Event Staff', assignedArea: '', notes: '' });
+  const [staffForm, setStaffForm] = useState({ staffEmail: '', role: 'Check-in Staff', responsibilities: '' });
+  const [availableStaff, setAvailableStaff] = useState([]);
 
   // Available options for session creation
   const [allVenues, setAllVenues] = useState([]);
@@ -67,6 +69,8 @@ const EventDetails = () => {
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [sponsorModalOpen, setSponsorModalOpen] = useState(false);
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [deliverableModalOpen, setDeliverableModalOpen] = useState(false);
+  const [speakerModalOpen, setSpeakerModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
 
@@ -87,6 +91,8 @@ const EventDetails = () => {
   const [announcementForm, setAnnouncementForm] = useState({
     title: '', message: '', targetAudience: 'All'
   });
+  const [deliverableForm, setDeliverableForm] = useState({ sponsor: '', name: '', description: '', dueDate: '' });
+  const [speakerForm, setSpeakerForm] = useState({ name: '', designation: '', company: '', contactEmail: '', sessionId: '' });
 
   const [actionError, setActionError] = useState(null);
   const [savingSession, setSavingSession] = useState(false);
@@ -154,6 +160,7 @@ const EventDetails = () => {
         getTicketCategories(id).then(r => setTicketCategories(r.data || [])).catch(() => {});
         getCouponsByEvent(id).then(r => setCoupons(r.data || [])).catch(() => {});
         getStaffAssignments(id).then(r => setStaffAssignments(r.data || [])).catch(() => {});
+        getStaffDirectory().then(r => setAvailableStaff(r.data || [])).catch(() => {});
       }
     } catch (err) {
       setError(err.message || 'Failed to load event information');
@@ -165,6 +172,13 @@ const EventDetails = () => {
   useEffect(() => {
     fetchEventAndSubData();
   }, [id]);
+
+  useEffect(() => {
+    if (!event || !isEventOwner || searchParams.get('addSession') !== '1') return;
+    setActiveTab('Sessions');
+    setActionError(null);
+    setSessionModalOpen(true);
+  }, [event, isEventOwner, searchParams]);
 
   // Handlers for Session Creation with Conflict Catching
   const handleCreateSession = async (e) => {
@@ -224,6 +238,30 @@ const EventDetails = () => {
     }
   };
 
+  const handleCreateEventSpeaker = async (e) => {
+    e.preventDefault();
+    setActionError(null);
+    try {
+      const result = await createSpeakerForOrganizer({
+        name: speakerForm.name,
+        designation: speakerForm.designation,
+        company: speakerForm.company,
+        contactEmail: speakerForm.contactEmail
+      });
+      const speaker = result.data;
+      if (speakerForm.sessionId && speaker?._id) {
+        await assignSpeakerToSession(speakerForm.sessionId, speaker._id);
+      }
+      setSpeakerModalOpen(false);
+      setSpeakerForm({ name: '', designation: '', company: '', contactEmail: '', sessionId: '' });
+      const [sessionsRes, speakersRes] = await Promise.all([getSessionsByEvent(id), getOrganizerSpeakers()]);
+      setSessions(sessionsRes.data || []);
+      setAllSpeakers(speakersRes.data?.speakers || []);
+    } catch (err) {
+      setActionError(err.message || 'Could not add the speaker to this event.');
+    }
+  };
+
   const handleCreateSponsor = async (e) => {
     e.preventDefault();
     setActionError(null);
@@ -232,10 +270,25 @@ const EventDetails = () => {
       if (!payload.assignedPackage) delete payload.assignedPackage;
       await createSponsor(id, payload);
       setSponsorModalOpen(false);
+      setSponsorForm({ companyName: '', contactName: '', contactEmail: '', website: '', assignedPackage: '' });
       const res = await getSponsorsByEvent(id);
       setSponsors(res.data || []);
     } catch (err) {
       setActionError(err.message || 'Error adding sponsor');
+    }
+  };
+
+  const handleCreateDeliverable = async (e) => {
+    e.preventDefault();
+    setActionError(null);
+    try {
+      await createDeliverable({ ...deliverableForm, event: id, dueDate: deliverableForm.dueDate || undefined });
+      setDeliverableModalOpen(false);
+      setDeliverableForm({ sponsor: '', name: '', description: '', dueDate: '' });
+      const res = await getDeliverablesByEvent(id);
+      setDeliverables(res.data || []);
+    } catch (err) {
+      setActionError(err.message || 'Failed to assign deliverable.');
     }
   };
 
@@ -282,7 +335,7 @@ const EventDetails = () => {
     try {
       await assignStaff(id, staffForm);
       setStaffModalOpen(false);
-      setStaffForm({ userEmail: '', role: 'Event Staff', assignedArea: '', notes: '' });
+      setStaffForm({ staffEmail: '', role: 'Check-in Staff', responsibilities: '' });
       const res = await getStaffAssignments(id);
       setStaffAssignments(res.data || []);
     } catch (err) { setActionError(err.message || 'Error assigning staff'); }
@@ -290,7 +343,7 @@ const EventDetails = () => {
 
   const handleUpdateStaffStatus = async (assignmentId, currentStatus) => {
     try {
-      const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+      const newStatus = currentStatus === 'Active' ? 'Off Duty' : 'Active';
       await updateStaffAssignment(id, assignmentId, { status: newStatus });
       setStaffAssignments(prev => prev.map(s => s._id === assignmentId ? { ...s, status: newStatus } : s));
     } catch (err) { setActionError(err.message || 'Error updating staff status'); }
@@ -342,7 +395,7 @@ const EventDetails = () => {
   // browsing (View scope) but all mutation buttons are owner-gated above.
   const tabs = isAttendeeRole
     ? ['Overview', 'Venues', 'Sessions', 'Speakers', 'Sponsors', 'Packages', 'Announcements']
-    : ['Overview', 'Venues', 'Sessions', 'Speakers', 'Sponsors', 'Packages', 'Announcements', ...(isEventOwner ? ['Deliverables', 'Registrations', 'Tickets & Coupons', 'Staff'] : []), 'Operations'];
+    : ['Overview', 'Venues', 'Sessions', 'Speakers', 'Sponsors', 'Packages', 'Announcements', ...(isEventOwner ? ['Event Team', 'Deliverables', 'Registrations', 'Tickets & Coupons', 'Staff'] : []), 'Operations'];
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -483,6 +536,37 @@ const EventDetails = () => {
 
       {actionError && !sessionModalOpen && <AlertError message={actionError} onClose={() => setActionError(null)} />}
 
+      {activeTab === 'Event Team' && isEventOwner && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="glass-panel" style={{ padding: '20px 24px' }}>
+            <h2 style={{ color: '#fff', fontSize: '19px', fontWeight: 800 }}>Event team · {event.name}</h2>
+            <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '6px' }}>Review the people and sponsor commitments assigned to this event. Use Manage to add or change assignments.</p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '14px' }}>
+            {[
+              { title: 'Speakers', count: eventSpeakers.length, tab: 'Speakers', icon: Calendar, rows: eventSpeakers.map((speaker) => {
+                const assignedSessions = sessions.filter((session) => (session.speakers || []).some((assigned) => (assigned._id || assigned).toString() === speaker._id.toString())).map((session) => session.title);
+                return { primary: speaker.name, secondary: assignedSessions.length ? `Sessions: ${assignedSessions.join(', ')}` : 'No session assigned' };
+              }) },
+              { title: 'Staff', count: staffAssignments.length, tab: 'Staff', icon: UserCheck, rows: staffAssignments.map((member) => ({ primary: member.staffUser?.name || member.staffUser?.email || 'Staff member', secondary: `${member.role} · ${member.status}` })) },
+              { title: 'Sponsorship packages', count: packages.length, tab: 'Packages', icon: Award, rows: packages.map((pkg) => ({ primary: pkg.name, secondary: `$${Number(pkg.price || 0).toLocaleString()} · ${pkg.quantityAvailable ?? '—'} available` })) },
+              { title: 'Sponsors', count: sponsors.length, tab: 'Sponsors', icon: Briefcase, rows: sponsors.map((sponsor) => ({ primary: sponsor.companyName, secondary: `Package: ${sponsor.assignedPackage?.name || 'Not assigned'}` })) },
+              { title: 'Sponsor deliverables', count: deliverables.length, tab: 'Deliverables', icon: Package, rows: deliverables.map((item) => ({ primary: item.name, secondary: `${item.sponsor?.companyName || 'Sponsor'} · ${item.status}${item.dueDate ? ` · Due ${new Date(item.dueDate).toLocaleDateString()}` : ''}` })) }
+            ].map((group) => {
+              const Icon = group.icon;
+              return (
+                <section key={group.title} className="glass-card" style={{ padding: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '15px', fontWeight: 800 }}><Icon style={{ width: '17px', height: '17px', color: '#a5b4fc' }} />{group.title} <span style={{ color: '#94a3b8' }}>({group.count})</span></h3>
+                    <button type="button" onClick={() => setActiveTab(group.tab)} style={{ border: '1px solid rgba(99,102,241,.35)', borderRadius: '7px', padding: '6px 9px', background: 'rgba(99,102,241,.12)', color: '#c7d2fe', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>Manage</button>
+                  </div>
+                  {group.rows.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>{group.rows.map((row, index) => <div key={`${row.primary}-${index}`} style={{ padding: '9px 10px', background: 'rgba(15,23,42,.55)', borderRadius: '8px' }}><div style={{ color: '#fff', fontSize: '13px', fontWeight: 700 }}>{row.primary}</div><div style={{ color: '#94a3b8', fontSize: '11px', marginTop: '3px' }}>{row.secondary}</div></div>)}</div> : <p style={{ color: '#64748b', fontSize: '12px' }}>Nothing assigned yet.</p>}
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'Overview' && (
@@ -604,8 +688,9 @@ const EventDetails = () => {
       {activeTab === 'Speakers' && (
         <div>
           {isEventOwner && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
-              <Link to="/organizer/speakers" style={{ backgroundColor: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc', padding: '9px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', textDecoration: 'none' }}>Manage speaker assignments</Link>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '14px' }}>
+              <button onClick={() => { setActionError(null); setSpeakerModalOpen(true); }} disabled={sessions.length === 0} style={{ backgroundColor: '#6366f1', color: '#fff', padding: '9px 14px', borderRadius: '8px', border: 'none', fontWeight: 700, fontSize: '13px', cursor: sessions.length === 0 ? 'not-allowed' : 'pointer', opacity: sessions.length === 0 ? 0.5 : 1 }}>Add Speaker to Event</button>
+              <Link to="/organizer/speakers" style={{ backgroundColor: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', color: '#a5b4fc', padding: '9px 14px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', textDecoration: 'none' }}>Manage Speakers</Link>
             </div>
           )}
           {eventSpeakers.length === 0 ? (
@@ -735,6 +820,9 @@ const EventDetails = () => {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button onClick={() => setDeliverableModalOpen(true)} disabled={sponsors.length === 0} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 700, cursor: sponsors.length === 0 ? 'not-allowed' : 'pointer', opacity: sponsors.length === 0 ? 0.5 : 1 }}>
+                <Plus style={{ width: '15px', height: '15px' }} /> Assign Deliverable
+              </button>
               {(['Pending','Submitted','Approved','Rejected','In Progress']).map(s => (
                 <span key={s} style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', backgroundColor:
                   s === 'Approved' ? 'rgba(16,185,129,0.15)' :
@@ -753,7 +841,7 @@ const EventDetails = () => {
             <div className="glass-panel" style={{ padding: '48px', textAlign: 'center' }}>
               <Package style={{ width: '44px', height: '44px', color: '#475569', margin: '0 auto 14px auto' }} />
               <h4 style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>No Deliverables Yet</h4>
-              <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>Sponsors will submit deliverables once they join your event.</p>
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>Assign a deliverable to an event sponsor so they can submit the work and any supporting link.</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -798,7 +886,7 @@ const EventDetails = () => {
                       </div>
 
                       {/* Action buttons — only show if not already Approved/Rejected */}
-                      {d.status !== 'Approved' && d.status !== 'Rejected' && (
+                      {d.status === 'Submitted' && (
                         <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                           <button
                             onClick={() => handleUpdateStatus('Approved')}
@@ -1078,7 +1166,7 @@ const EventDetails = () => {
                 Event Staff Management
               </h3>
               <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
-                Assign team members to help manage check-ins, sessions, or specific venues.
+                Assign Event Staff to check in attendees with the QR scanner or ticket lookup.
               </p>
             </div>
             {event.status !== 'Cancelled' && (
@@ -1092,7 +1180,7 @@ const EventDetails = () => {
           </div>
 
           {staffAssignments.length === 0 ? (
-            <EmptyState title="No Staff Assigned" message="Add team members to help run this event." icon={UserCheck} />
+            <EmptyState title="No Check-in Staff Assigned" message="Assign an active Event Staff account to check in attendees for this event." icon={UserCheck} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {staffAssignments.map(staff => (
@@ -1100,7 +1188,7 @@ const EventDetails = () => {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                       <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', margin: 0 }}>
-                        {staff.user?.name || 'Unknown User'}
+                      {staff.staffUser?.name || 'Unknown User'}
                       </h4>
                       <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '20px', backgroundColor: 'rgba(192,132,252,0.15)', color: '#c084fc', fontWeight: 600 }}>
                         {staff.role}
@@ -1111,13 +1199,13 @@ const EventDetails = () => {
                     </div>
                     
                     <div style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '10px' }}>
-                      <span><strong>Email:</strong> {staff.user?.email}</span>
-                      {staff.assignedArea && <span><strong>Area:</strong> {staff.assignedArea}</span>}
+                      <span><strong>Email:</strong> {staff.staffUser?.email}</span>
+                      {staff.assignedVenue?.name && <span><strong>Area:</strong> {staff.assignedVenue.name}</span>}
                     </div>
                     
-                    {staff.notes && (
+                    {staff.responsibilities && (
                       <p style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>
-                        "{staff.notes}"
+                        "{staff.responsibilities}"
                       </p>
                     )}
                   </div>
@@ -1125,7 +1213,7 @@ const EventDetails = () => {
                   {event.status !== 'Cancelled' && (
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handleUpdateStaffStatus(staff._id, staff.status)} style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', fontSize: '12px', cursor: 'pointer' }}>
-                        {staff.status === 'Active' ? 'Deactivate' : 'Activate'}
+                        {staff.status === 'Active' ? 'Set Off Duty' : 'Activate'}
                       </button>
                       <button onClick={() => handleDeleteStaff(staff._id)} style={{ padding: '6px 10px', borderRadius: '6px', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer' }}>
                         <Trash2 style={{ width: '14px', height: '14px' }} />
@@ -1152,6 +1240,94 @@ const EventDetails = () => {
           </p>
         </div>
       )}
+
+      <Modal isOpen={sponsorModalOpen} onClose={() => setSponsorModalOpen(false)} title="Select Sponsor for Event">
+        <form onSubmit={handleCreateSponsor} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
+          <p style={{ color: '#94a3b8', fontSize: '13px' }}>Add an existing Sponsor account to this event. Their company profile will be linked to their account so they can enhance it in the Sponsor workspace.</p>
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Company name *</label>
+          <input required value={sponsorForm.companyName} onChange={e => setSponsorForm({ ...sponsorForm, companyName: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Sponsor account email *</label>
+          <input type="email" required value={sponsorForm.contactEmail} onChange={e => setSponsorForm({ ...sponsorForm, contactEmail: e.target.value })} placeholder="Must match an active Sponsor account" style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Contact name</label>
+          <input value={sponsorForm.contactName} onChange={e => setSponsorForm({ ...sponsorForm, contactName: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Sponsorship package</label>
+          <select value={sponsorForm.assignedPackage} onChange={e => setSponsorForm({ ...sponsorForm, assignedPackage: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.8)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }}>
+            <option value="">No package selected</option>
+            {packages.map(pkg => <option key={pkg._id} value={pkg._id}>{pkg.name} · ${pkg.price}</option>)}
+          </select>
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Website</label>
+          <input value={sponsorForm.website} onChange={e => setSponsorForm({ ...sponsorForm, website: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Add Sponsor to Event</button>
+        </form>
+      </Modal>
+
+      <Modal isOpen={packageModalOpen} onClose={() => setPackageModalOpen(false)} title="Create Sponsorship Package">
+        <form onSubmit={handleCreatePackage} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Package name *</label>
+          <input required value={packageForm.name} onChange={e => setPackageForm({ ...packageForm, name: e.target.value })} placeholder="Gold, Silver, or Platinum" style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Package description</label>
+          <textarea rows={3} value={packageForm.description} onChange={e => setPackageForm({ ...packageForm, description: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Price *</label>
+              <input type="number" required min="0" step="0.01" value={packageForm.price} onChange={e => setPackageForm({ ...packageForm, price: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Available slots *</label>
+              <input type="number" required min="0" value={packageForm.quantityAvailable} onChange={e => setPackageForm({ ...packageForm, quantityAvailable: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+            </div>
+          </div>
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Benefits (comma separated)</label>
+          <input value={packageForm.benefits} onChange={e => setPackageForm({ ...packageForm, benefits: e.target.value })} placeholder="Booth, logo placement, stage mention" style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Create Package</button>
+        </form>
+      </Modal>
+
+      <Modal isOpen={speakerModalOpen} onClose={() => setSpeakerModalOpen(false)} title="Add Speaker to This Event">
+        <form onSubmit={handleCreateEventSpeaker} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Speaker name *</label>
+          <input required value={speakerForm.name} onChange={e => setSpeakerForm({ ...speakerForm, name: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Title</label>
+              <input value={speakerForm.designation} onChange={e => setSpeakerForm({ ...speakerForm, designation: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Company</label>
+              <input value={speakerForm.company} onChange={e => setSpeakerForm({ ...speakerForm, company: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+            </div>
+          </div>
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Email (optional)</label>
+          <input type="email" value={speakerForm.contactEmail} onChange={e => setSpeakerForm({ ...speakerForm, contactEmail: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Assign to session *</label>
+          <select required value={speakerForm.sessionId} onChange={e => setSpeakerForm({ ...speakerForm, sessionId: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.8)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }}>
+            <option value="">Choose this event's session</option>
+            {sessions.map(session => <option key={session._id} value={session._id}>{session.title} · {new Date(session.startTime).toLocaleString()}</option>)}
+          </select>
+          <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Add and Assign Speaker</button>
+        </form>
+      </Modal>
+
+      <Modal isOpen={deliverableModalOpen} onClose={() => setDeliverableModalOpen(false)} title="Assign Sponsor Deliverable">
+        <form onSubmit={handleCreateDeliverable} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Selected event sponsor *</label>
+          <select required value={deliverableForm.sponsor} onChange={e => setDeliverableForm({ ...deliverableForm, sponsor: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.8)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }}>
+            <option value="">Choose sponsor</option>
+            {sponsors.map(sp => <option key={sp._id} value={sp._id}>{sp.companyName}</option>)}
+          </select>
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Deliverable *</label>
+          <input required value={deliverableForm.name} onChange={e => setDeliverableForm({ ...deliverableForm, name: e.target.value })} placeholder="For example, event banner artwork" style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Instructions</label>
+          <textarea value={deliverableForm.description} onChange={e => setDeliverableForm({ ...deliverableForm, description: e.target.value })} rows={3} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Due date</label>
+          <input type="date" value={deliverableForm.dueDate} onChange={e => setDeliverableForm({ ...deliverableForm, dueDate: e.target.value })} style={{ width: '100%', padding: '10px', background: 'rgba(15,23,42,.6)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '6px', color: '#fff' }} />
+          <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', background: '#6366f1', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>Assign Deliverable</button>
+        </form>
+      </Modal>
 
       {/* CREATE SESSION MODAL WITH CONFLICT CHECKING */}
       <Modal isOpen={sessionModalOpen} onClose={() => setSessionModalOpen(false)} title="Add Event Session">
@@ -1215,6 +1391,7 @@ const EventDetails = () => {
       {/* CREATE ANNOUNCEMENT MODAL */}
       <Modal isOpen={announcementModalOpen} onClose={() => setAnnouncementModalOpen(false)} title="Broadcast Announcement">
         <form onSubmit={handleCreateAnnouncement} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <label style={{ fontSize: '13px', color: '#cbd5e1', fontWeight: 600 }}>Announcement Title *</label>
           </div>
@@ -1330,33 +1507,37 @@ const EventDetails = () => {
       </Modal>
 
       {/* ASSIGN STAFF MODAL */}
-      <Modal isOpen={staffModalOpen} onClose={() => setStaffModalOpen(false)} title="Assign Event Staff">
+      <Modal isOpen={staffModalOpen} onClose={() => setStaffModalOpen(false)} title="Assign Check-in Staff">
         <form onSubmit={handleAssignStaff} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {actionError && <AlertError message={actionError} onClose={() => setActionError(null)} />}
           <div>
-            <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Staff User Email *</label>
-            <input type="email" required value={staffForm.userEmail} onChange={e => setStaffForm({ ...staffForm, userEmail: e.target.value })} placeholder="User must be registered on platform" style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }} />
-            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>The user will be looked up by their email address.</p>
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Role / Title *</label>
-              <input type="text" required value={staffForm.role} onChange={e => setStaffForm({ ...staffForm, role: e.target.value })} placeholder="e.g. Check-in Desk, Stage Manager" style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Assigned Area (Optional)</label>
-              <input type="text" value={staffForm.assignedArea} onChange={e => setStaffForm({ ...staffForm, assignedArea: e.target.value })} placeholder="e.g. Main Hall" style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }} />
-            </div>
+            <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Choose Event Staff *</label>
+            <select required value={staffForm.staffEmail} onChange={e => setStaffForm({ ...staffForm, staffEmail: e.target.value })} style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }}>
+              <option value="">Select active staff</option>
+              {availableStaff.map(staff => <option key={staff._id} value={staff.email}>{staff.name} ({staff.email})</option>)}
+            </select>
+            {availableStaff.length === 0 && <p style={{ fontSize: '11px', color: '#fbbf24', marginTop: '4px' }}>No active Event Staff accounts are available. Ask an admin to create a staff account first.</p>}
           </div>
           
           <div>
-            <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Notes (Optional)</label>
-            <textarea value={staffForm.notes} onChange={e => setStaffForm({ ...staffForm, notes: e.target.value })} rows={2} style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }} />
+            <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Assignment *</label>
+            <select required value={staffForm.role} onChange={e => setStaffForm({ ...staffForm, role: e.target.value })} style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.8)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }}>
+              <option value="Check-in Staff">Check-in attendees</option>
+              <option value="Session Coordinator">Session Coordinator</option>
+              <option value="Venue Coordinator">Venue Coordinator</option>
+              <option value="Help Desk">Help Desk</option>
+              <option value="Technical Support">Technical Support</option>
+            </select>
+          </div>
+          
+          <div>
+            <label style={{ fontSize: '13px', color: '#cbd5e1' }}>Responsibilities (Optional)</label>
+            <textarea value={staffForm.responsibilities} onChange={e => setStaffForm({ ...staffForm, responsibilities: e.target.value })} rows={2} placeholder="For example, scan attendee tickets at the main entrance" style={{ width: '100%', padding: '10px', backgroundColor: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '6px', color: '#fff', fontSize: '14px' }} />
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
             <button type="button" onClick={() => setStaffModalOpen(false)} style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8', border: 'none', cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: '#c084fc', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Assign Staff</button>
+            <button type="submit" disabled={availableStaff.length === 0} style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: '#c084fc', color: '#fff', border: 'none', fontWeight: 600, cursor: availableStaff.length === 0 ? 'not-allowed' : 'pointer', opacity: availableStaff.length === 0 ? 0.5 : 1 }}>Assign Staff to Event</button>
           </div>
         </form>
       </Modal>

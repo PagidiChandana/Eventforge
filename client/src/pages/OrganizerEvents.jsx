@@ -76,6 +76,11 @@ export default function OrganizerEvents() {
                 <Link to={`/events/${e._id}`} style={{ flex: 1, textAlign: 'center', backgroundColor: '#6366f1', color: '#fff', padding: '9px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                   <Settings style={{ width: '14px', height: '14px' }} /> Manage Workspace
                 </Link>
+                {e.status !== 'Cancelled' && (
+                  <Link to={`/events/${e._id}?tab=Sessions&addSession=1`} style={{ textAlign: 'center', backgroundColor: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.3)', color: '#67e8f9', padding: '9px 12px', borderRadius: '8px', fontWeight: 700, fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus style={{ width: '14px', height: '14px' }} /> Add Session
+                  </Link>
+                )}
                 <Link to={`/events/${e._id}/operations`} style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '9px 14px', borderRadius: '8px', fontWeight: 600, fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                   <BarChart3 style={{ width: '14px', height: '14px' }} /> Ops
                 </Link>

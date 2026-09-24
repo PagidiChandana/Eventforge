@@ -4,12 +4,14 @@ services:
     env: node
     region: oregon
     rootDir: server
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.16.0
       - key: MONGODB_URI
         sync: false # MongoDB Atlas connection string
       - key: JWT_SECRET
