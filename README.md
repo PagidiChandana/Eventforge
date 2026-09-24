@@ -2,6 +2,10 @@
 
 **EventForge** is a full-stack MERN capstone application designed for managing corporate conferences, tech summits, and enterprise workshops. It features real-time QR ticket check-in, multi-role authorization (Admin, Organizer, Staff, Speaker, Attendee, Sponsor), custom sponsorship deliverable tracking, MongoDB aggregation analytics, and Google Gemini AI content generation and session recommendations.
 
+for admin role:
+gmail:admin@eventforge.com
+password:password123
+
 ---
 
 ## 🌟 Key Features
